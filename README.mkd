@@ -1,0 +1,87 @@
+# COM3505 Lab Assessment 2 - Marvin Calculator
+
+This project is submitted in fulfilment of the second *IOT* assignment by Kamil Topolewski. The program is built on top of *DIY Marvin* (*https://github.com/hamishcunningham/diy-alexa*) using *ESP32* microcontroller. My contribution is the implementation of a  **voice-controlled calculator** with capabilities including:
+- addition, subtraction
+- multiplication, division
+- saving and loading numbers from flash drive
+- LEDs indicating the state of the machine
+
+# Design
+
+Putting the Marvin together on a breadboard was very inefficient. Not only visually, but also hard to transport, which forced wiring Marvin from scratch every time it had to be transferred. Therefore, a **PCB** board has been designed. The layout has been created using *DIY Layout Creator* (*https://github.com/bancika/diy-layout-creator*) and can be found in `/ProjectDesign/PCB-marvin.diy`. The design snippets can be seen below (alternatively all images are stored in `/ProjectDesign`).  
+
+<div align="center">
+<img src="ProjectDesign/PCB-marvin-layout.png"  width="800" align="center" alt="view in ProjectDesign/PCB-marvin.png">
+</div>
+
+Since I wanted the ability to test ESP32 (and microphone, speaker) on the breadboard, I could not solder them directly on the PCB board. Therefore, *PCB sockets* are used, to easily plug-in and out components.
+
+The **left** image shows how the components are placed on the board. Black circles with white inside, show the sockets with labels of components. LEDs and resistors are soldered directly into the board since I possessed extra ones.
+
+The **middle** image shows the wiring of the PCB board from the top point of view. To easier visualize the connections, they are represented with different colours. This layout was built according to the schema provided for Marvin. This schema is shown below but altered with colours equivalent to my PCB layout. Fitting all connections on a small PCB board provided in the course was challenging. In the beginning, I tried to design the PCB with all wires going on the bottom side of the board. However, that turned out impossible. To overcome this, a few wires "jump" others by running the connection temporarily on top of the board (these "jumps" are represented in the snippets with dark blue thinner lines). This essentially creates a second layer allowing to fit the circuit on the PCB.
+
+<div align="center">
+<img src="ProjectDesign/PCB-schema.png"  width="500" align="center" alt="view in ProjectDesign/PCB-schema.png">
+</div>
+
+The **right** image shows the wiring from the bottom point of view, created by mirroring the top view horizontally. This view enables to easily solder the elements together in practice.
+
+Below are shown pictures of the PCB board in real life, each corresponding to the designs in the first Figure. With a temporary deficit of wires, the connections have been built with "legs" of LEDs and resistors. Some connections on the top of the PCB are not visible due to hot glue applied for more sturdy sockets.
+
+<div align="center">
+<img src="ProjectDesign/PCB-marvin-photos.png"  width="800" align="center" alt="view in ProjectDesign/PCB-marvin-photos.png">
+</div>
+
+Concerned about damaging the components, I had to ensure the correctness of the soldered connections. This has been done by implementing and building a simple LED circuit. If there is a connection between tested sockets the LED would turn on. Paranoid about damaging the ESP, all possible variations (overall 820 combinations) have been tested to ensure there are no extra connections (i.e. mostly check if there were no wires touching by mistake). The testing procedure involved two breadboard jumper wires which were efficient for fast testing. A photo taken during the testing is shown below. 
+
+<div align="center">
+<img src="ProjectDesign/circuit_testing.jpg"  width="450" align="center" alt="view in ProjectDesign/circuit_testing.jpg">
+</div>
+
+# Base code
+As mentioned, the code has been built on top of repository https://github.com/hamishcunningham/diy-alexa. In this section, I will give a high-level explanation how the base code works. The step by step process is shown in the flowchart below.
+
+<div align="center">
+<img src="ProjectDesign/flowchart.png"  width="450" align="center" alt="view in ProjectDesign/flowchart.png">
+</div>
+
+After the program is built, the microcontroller waits for the wake-up word, which is *Marvin*. The recognition is done using a neural network developed in *Tensorflow Lite* https://www.tensorflow.org/lite and exported to a *C++* file. The model is trained on a speech commands dataset from *Google AI* https://ai.googleblog.com/. When the wake-up word is detected, program starts recording the audio. Then the recording is sent via a WiFi connection to *Wit API* - an advanced natural language processing program from *Facebook* https://wit.ai/. The AI figures out the intention and keywords in the audio and sends it back. Then ESP performs an action based on the Wit instructions.
+
+# Contributions
+For my project, I developed functionality to help me with my poor maths performance - **voice-controlled calculator**. In this section, I will go through the main alternation to the base code. Calculator functionality includes: addition, subtraction, division, multiplication, saving and loading numbers on the ESP's flash drive. Another new feature is the visual indication of the machine's state.
+
+### Machine state LEDs
+A functionality I was missing from the base code, was some indication what is the current state of Marvin. This is especially vital with a slow internet connection because Marvin is not responsive for a long time, but the user has no idea about it. Therefore, I have used 3 LEDs which makes the user experience more pleasant:
+- Red - Marvin is busy and does not take any input. This state usually happens as audio is processed.
+- Yellow - idle state, waiting for the wake word.
+- Green - recording the audio.
+It is important to turn on corresponding LEDs in the right place in the code, in order to show the state of the machine as reliable as possible. The yellow LED shines when the run() loop of DetectStateWord is executed. This is where the software is listening to the wake-word. The recording state is not that straightforward. The run() function in RecogniseCommandState rewinds 1.6s to account for slow internet connection, therefore audio is already recorded prior. The most reliable place I found through testing was just before WitAiChunkedUploader is initialized. The red LED is turned on after 4 seconds of recording have elapsed.
+
+### Wit.ai training
+###### Calculations
+Wit.ai returns the intent and keywords specified by the user. For each maths operation, a new intent is created, in order to specify what operation to apply. I also specified two number entities two capture both numbers on which the operation is meant to be applied. The entity type is set to *wit:number* - a wit library for number recognition, which extrapolates numerical values from free text. The important property of this built-in entity is that it returns a 'value' field, necessary for the calculations.
+
+###### Saving and loading numbers
+Saving a number also takes two *wit:number* entities, however, only one serves as a number value, and the other represents an index. This allows for storing multiple numbers. The loading feature takes only one number - index.
+
+###### Wit.ai implementation
+Wit API returns .json files containing data retrieved from the text. Therefore, we need to extract values essential for operations. Firstly, the object handling JSON document had to be increased. The original size of the array was too small and the data was truncated. The file then is filtered to extract the following information:
+- *["entities"]["wit$number:number"]["value"]* - contains values of two number values for all operations (and one number for loading)
+- *["entities"]["wit$number:number"]["confidence"]* - AI's confidence assigned to values predicted
+- *["intents"]["name"]* - name of the operation to execute on numbers
+- *["intents"]["confidence"]* - the confidence assigned to the intent
+- *["text"]* - free text representing AI's interpretation of what it understood
+
+### Calculations
+The values and intent are passed to processIntent() function. Then based on the intent (calculate, save or load) the corresponding function is called. In each function, AI's confidence in predictions is checked. The action is taken only if all predictions are above 40%. The equivalent calculation is executed and then a speaker output with result is played.
+
+### Loading and saving numbers
+ESP32 flash is a non-volatile memory, which allows it to remember the numbers even after resetting. Flash has a limited capacity of 512 addresses and each can store an integer in the range 0-255. Saving and loading data is done using the EEPROM library. This is done by initializing how many bytes should be loaded from flash into RAM and then by saving/loading numbers.
+
+### Speaker output
+For the result of the calculations, I have recorded audio tracks of numbers. The specification of these recordings is important, to match the settings of the program. The sample rate of the audio had to be 16,000 Hz and a bit depth of 16-bit signed integer. For better audio audibility, the voice tracks have been amplified to enhance the strength of electronic signals. Then the tracks have been modulated to sound "robot-like" by layering the audio and applying echo, pitch and tempo alternation
+
+# Limitations
+- the flash memory for saving/loading numbers is designed for about 100,000 to 1,000,000 write operations (source: https://randomnerdtutorials.com/esp32-flash-memory). Therefore, it is not suitable for long time use.
+- I could not load all numbers tracks on the ESP, because of the SPIFFS (SPI Flash File Storage) capacity. According to some sources (https://www.tutorialspoint.com/esp32_for_iot), more onboard memory can be dedicated to SPIFFs (by default only 1.5MB), however, I wasn't able to do so.
+- wit.ai frequently misinterprets multiplication and subtraction. Because the syntax of subtracting two numbers is "subtract 5 from 10" wit.ai often interprets "from " as a date value. The same happens with multiplication "by ".
