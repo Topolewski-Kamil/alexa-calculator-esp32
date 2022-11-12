@@ -1,6 +1,6 @@
 # COM3505 Lab Assessment 2 - Marvin Calculator
 
-This project is submitted in fulfilment of the second *IOT* assignment by Kamil Topolewski. The program is built on top of *DIY Marvin* (*https://github.com/hamishcunningham/diy-alexa*) using *ESP32* microcontroller. My contribution is the implementation of a  **voice-controlled calculator** with capabilities including:
+This project is submitted in fulfilment of the second *IOT* assignment. The program is built on top of *DIY Marvin* (*https://github.com/hamishcunningham/diy-alexa*) using *ESP32* microcontroller. My contribution is the implementation of a  **voice-controlled calculator** with capabilities including:
 - addition, subtraction
 - multiplication, division
 - saving and loading numbers from flash drive
